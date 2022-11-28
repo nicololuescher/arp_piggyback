@@ -58,6 +58,7 @@ def main(verbose):
                 pass
 
 
+# XXX this doesn't work
 def buffer_timer():
     global updated, peers
     while True:
