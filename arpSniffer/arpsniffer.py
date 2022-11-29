@@ -20,9 +20,9 @@ def main(verbose):
         print("start capturing...")
     rawSocket= socket.socket(socket.PF_PACKET, socket.SOCK_RAW, socket.htons(0x0806))
 
-    current_position = 0
     updated = int(time.time())
     peers = dict()
+    peerPositions = dict()
 
     process = Process(target=buffer_timer)
     process.start()
@@ -35,15 +35,22 @@ def main(verbose):
 
         if not src_mac in peers:
             peers[src_mac] = b''
+        
+        if not src_mac in peerPositions:
+            peerPositions[src_mac] = 0
+        
+        if candidate[0] == 0 and candidate[1] == 100 and peerPositions[src_mac] != 0:
+            peerPositions[src_mac] = 0
+            peers[src_mac] = b''
 
-        if candidate[0] == current_position and candidate[1] == 100:
+        if candidate[0] == peerPositions[src_mac] and candidate[1] == 100:
             updated = int(time.time())
             if len(peers[src_mac]) > 1000:
                 del(peers[src_mac])
             if is_verbose:
-                print("Received packet number ", current_position)
+                print("Received packet number ", peerPositions[src_mac])
             peers[src_mac] += candidate[2:]
-            current_position += 1
+            peerPositions[src_mac] += 1
             try:
                 key = hashlib.sha256(src_mac).digest()
                 box = nacl.secret.SecretBox(key)
