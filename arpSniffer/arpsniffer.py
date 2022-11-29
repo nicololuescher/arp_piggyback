@@ -12,13 +12,15 @@ peers = dict()
 
 # click options
 @click.command()
-@click.option("--verbose", is_flag=True, default=False, help="show additional information.")
+@click.option(
+    "--verbose", is_flag=True, default=False, help="show additional information."
+)
 def main(verbose):
     global updated, peers, is_verbose
     is_verbose = verbose
     if is_verbose:
         print("start capturing...")
-    rawSocket= socket.socket(socket.PF_PACKET, socket.SOCK_RAW, socket.htons(0x0806))
+    rawSocket = socket.socket(socket.PF_PACKET, socket.SOCK_RAW, socket.htons(0x0806))
 
     updated = int(time.time())
     peers = dict()
@@ -46,7 +48,7 @@ def main(verbose):
         if candidate[0] == peerPositions[src_mac] and candidate[1] == 100:
             updated = int(time.time())
             if len(peers[src_mac]) > 1000:
-                del(peers[src_mac])
+                del peers[src_mac]
             if is_verbose:
                 print("Received packet number ", peerPositions[src_mac])
             peers[src_mac] += candidate[2:]
@@ -54,9 +56,9 @@ def main(verbose):
             try:
                 key = hashlib.sha256(src_mac).digest()
                 box = nacl.secret.SecretBox(key)
-                decrypt = box.decrypt(peers[src_mac].strip(b'\x00'))
+                decrypt = box.decrypt(peers[src_mac].strip(b"\x00"))
                 decrypt = zlib.decompress(decrypt)
-                if(decrypt[10:15] == b'addrs'):
+                if decrypt[10:15] == b"addrs":
                     descriptor = str(decrypt[10:], "utf-8")
                     print(descriptor + "\n")
                     process.terminate()
@@ -69,7 +71,7 @@ def main(verbose):
 def buffer_timer():
     global updated, peers
     while True:
-        if(int(time.time()) - updated > 90):
+        if int(time.time()) - updated > 90:
             print(peers)
             updated = int(time.time())
             peers = dict()
