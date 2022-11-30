@@ -10,16 +10,23 @@ import click
 
 # click options
 
-@click.command()
-@click.option("--verbose", is_flag=True, default=False, help="show additional information.")
-@click.option("--insert_into_vula", is_flag=True, default=False, help="Automatically insert into vula.")
 
+@click.command()
+@click.option(
+    "--verbose", is_flag=True, default=False, help="show additional information."
+)
+@click.option(
+    "--insert_into_vula",
+    is_flag=True,
+    default=False,
+    help="Automatically insert into vula.",
+)
 def main(verbose, insert_into_vula):
     if verbose:
         print("start capturing...")
-    rawSocket= socket.socket(socket.PF_PACKET, socket.SOCK_RAW, socket.htons(0x0806))
+    rawSocket = socket.socket(socket.PF_PACKET, socket.SOCK_RAW, socket.htons(0x0806))
 
-    packet_stream = b''
+    packet_stream = b""
     current_position = 0
 
     while True:
@@ -35,9 +42,9 @@ def main(verbose, insert_into_vula):
             try:
                 key = hashlib.sha256(src_mac).digest()
                 box = nacl.secret.SecretBox(key)
-                decrypt = box.decrypt(packet_stream.strip(b'\x00'))
+                decrypt = box.decrypt(packet_stream.strip(b"\x00"))
                 decrypt = zlib.decompress(decrypt)
-                if(decrypt[0:5] == b'addrs'):
+                if decrypt[0:5] == b"addrs":
                     descriptor = str(decrypt, "utf-8")
                     if insert_into_vula:
                         print("echo '" + descriptor + "' | vula peer import")
@@ -47,6 +54,7 @@ def main(verbose, insert_into_vula):
                     break
             except:
                 pass
+
 
 if __name__ == "__main__":
     main()
