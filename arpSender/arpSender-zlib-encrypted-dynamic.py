@@ -21,7 +21,9 @@ zero_mac = b"\x00\x00\x00\x00\x00\x00"
 @click.command()
 @click.option("--interface", type=str, help="interface to use for sending packets.")
 @click.option("--descriptor", type=str, help="descriptor to use for sending packets.")
-@click.option("--verbose", is_flag=True, default=False, help="show additional information.")
+@click.option(
+    "--verbose", is_flag=True, default=False, help="show additional information."
+)
 def main(interface, descriptor, verbose):
     # open raw socket
     s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW)
@@ -58,7 +60,7 @@ def main(interface, descriptor, verbose):
     packet += protocol_size  # protocol size
     packet += op_code  # opcode
     packet += src_mac  # sender mac
-    packet += ip # sender ip
+    packet += ip  # sender ip
     packet += zero_mac  # destination mac
     packet += ip  # destination ip
 
@@ -67,6 +69,7 @@ def main(interface, descriptor, verbose):
 
     # send packet
     s.send(packet)
+
 
 if __name__ == "__main__":
     main()

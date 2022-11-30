@@ -43,9 +43,13 @@ def main(interface, descriptor, verbose, is_reply):
     dest_ip = get_arp(verbose)
     op_code = get_op_code(is_reply, verbose)
 
-    message = compress_and_encrypt(descriptor, src_mac, verbose) # compress and encrypt message
-    packet_header = generate_header(src_mac, op_code, ip, dest_ip) # generate packet header
-    send_packet(s, packet_header, message, verbose) # send arp packet
+    message = compress_and_encrypt(
+        descriptor, src_mac, verbose
+    )  # compress and encrypt message
+    packet_header = generate_header(
+        src_mac, op_code, ip, dest_ip
+    )  # generate packet header
+    send_packet(s, packet_header, message, verbose)  # send arp packet
 
 
 def send_packet(socket, packet_header, packet_payload, verbose):
@@ -53,10 +57,12 @@ def send_packet(socket, packet_header, packet_payload, verbose):
     for i in range(math.ceil(len(packet_payload) / (60 - len(packet_header) - 1))):
         packet = (
             packet_header
-            + i.to_bytes(1, "big") # add enumerator
+            + i.to_bytes(1, "big")  # add enumerator
             + packet_payload[
                 i
-                * ((60 - len(packet_header) - 1)) : (i + 1) # add corresponding packet chunk
+                * ((60 - len(packet_header) - 1)) : (
+                    i + 1
+                )  # add corresponding packet chunk
                 * ((60 - len(packet_header) - 1))
             ]
         )
@@ -100,16 +106,18 @@ def get_mac(socket, interface):
 
 
 def compress_and_encrypt(msg, encryption_key, verbose=True):
-    message = str(int(time.time())) + msg # add unix timestamp to message to add some randomness to encrypted text
-    hd = bytes(message, "utf-8") # encode message into bytes
-    hdc = zlib.compress(hd) # compress with zlib
-    key = hashlib.sha256(encryption_key).digest() # generate key from source mac
-    box = nacl.secret.SecretBox(key) # generate enryptor
-    nonce = nacl.utils.random(nacl.secret.SecretBox.NONCE_SIZE) # add default nonce
+    message = (
+        str(int(time.time())) + msg
+    )  # add unix timestamp to message to add some randomness to encrypted text
+    hd = bytes(message, "utf-8")  # encode message into bytes
+    hdc = zlib.compress(hd)  # compress with zlib
+    key = hashlib.sha256(encryption_key).digest()  # generate key from source mac
+    box = nacl.secret.SecretBox(key)  # generate enryptor
+    nonce = nacl.utils.random(nacl.secret.SecretBox.NONCE_SIZE)  # add default nonce
     if verbose:
         print("message length before compression:", len(hd))
         print("message length after compression:", len(hdc))
-    return box.encrypt(hdc, nonce) # return encryped text
+    return box.encrypt(hdc, nonce)  # return encryped text
 
 
 def generate_header(src_mac, op_code, ip, dest_ip):
@@ -131,14 +139,18 @@ def generate_header(src_mac, op_code, ip, dest_ip):
 
 
 def get_arp(verbose=False):
-    with open("/proc/net/arp") as arp_table: # read arp cache
-        reader = list(csv.reader(arp_table, skipinitialspace=True, delimiter=" ")) # generate csv reader
+    with open("/proc/net/arp") as arp_table:  # read arp cache
+        reader = list(
+            csv.reader(arp_table, skipinitialspace=True, delimiter=" ")
+        )  # generate csv reader
     dest_ip = b""
-    arp_cache = [a[0] for a in reader[1:]] # skip header line and read ip field
+    arp_cache = [a[0] for a in reader[1:]]  # skip header line and read ip field
     if len(arp_cache) == 0:
-        dest_ip = get_ip()[0:3] + b"\x01" # if chache is empty, take 0x01 address of own ip
+        dest_ip = (
+            get_ip()[0:3] + b"\x01"
+        )  # if chache is empty, take 0x01 address of own ip
     else:
-        random_ip = random.choice(arp_cache) # pick random ip
+        random_ip = random.choice(arp_cache)  # pick random ip
         dest_ip = socket.inet_aton(random_ip)
 
     if verbose:
