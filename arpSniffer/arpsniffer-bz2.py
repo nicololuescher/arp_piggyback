@@ -10,10 +10,9 @@ while True:
 
     # candidate = packet[0][42:47]
     candidate = packet[0][42:]
-    if(candidate[0:2] != b'\x00\x00'):
+    if candidate[0:2] != b"\x00\x00":
         candidate = bz2.decompress(candidate)
-        if(candidate[0:5] == b'vula;'):
+        if candidate[0:5] == b"vula;":
             descriptor = candidate[5:]
             print(str(descriptor, "utf-8") + "\n")
             break
-    
