@@ -7,7 +7,9 @@ import hashlib
 import nacl.secret
 import nacl.utils
 import click
-
+import pydbus
+from arpsniffer-dbus import *
+ 
 # click options
 
 
@@ -47,8 +49,9 @@ def main(verbose, insert_into_vula):
                 if decrypt[0:5] == b"addrs":
                     descriptor = str(decrypt, "utf-8")
                     if insert_into_vula:
-                        print("echo '" + descriptor + "' | vula peer import")
-                        os.system("echo '" + descriptor + "' | vula peer import")
+                        pydbusProcessDescriptorString(descriptor)
+                        """print("echo '" + descriptor + "' | vula peer import")
+                        """os.system("echo '" + descriptor + "' | vula peer import")
                     else:
                         print(descriptor + "\n")
                     break
