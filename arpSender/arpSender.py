@@ -10,6 +10,8 @@ import hashlib
 import nacl.secret
 import nacl.utils
 import click
+import arpSender_dbus
+import json
 
 # static values
 broadcast_mac = b"\xff\xff\xff\xff\xff\xff"
@@ -23,7 +25,7 @@ zero_mac = b"\x00\x00\x00\x00\x00\x00"
 # click options
 @click.command()
 @click.option("--interface", type=str, help="interface to use for sending packets.")
-@click.option("--descriptor", type=str, help="descriptor to use for sending packets.")
+@click.option("--descriptor", required=False, type=str, help="descriptor to use for sending packets.")
 @click.option(
     "--verbose", is_flag=True, default=False, help="show additional information."
 )
@@ -43,6 +45,12 @@ def main(interface, descriptor, verbose, is_reply):
     dest_ip = get_arp(verbose)
     op_code = get_op_code(is_reply, verbose)
 
+    if descriptor == None:
+        descriptors = json.loads(arpSender_dbus.pydbusGetLatestDescriptor())
+        descriptor = build_vula_descriptor(descriptors.get(socket.inet_ntoa(ip)))
+        if verbose:
+            print("Got descriptor", descriptor)
+
     message = compress_and_encrypt(
         descriptor, src_mac, verbose
     )  # compress and encrypt message
@@ -51,6 +59,24 @@ def main(interface, descriptor, verbose, is_reply):
     )  # generate packet header
     send_packet(s, packet_header, message, verbose)  # send arp packet
 
+
+def build_vula_descriptor(input):
+    output = ""
+    output += "addrs=" + input["addrs"] + "; "
+    output += "c=" + input["c"] + "; "
+    output += "dt=" + input["dt"] + "; "
+    if input["e"] == "False":        
+        output += "e=0; "
+    else:
+        output += "e=1; "
+    output += "hostname=" + input["hostname"] + "; "
+    output += "pk=" + input["pk"] + "; "
+    output += "port=" + input["port"] + "; "
+    output += "r=" + input["r"] + "; "
+    output += "s=" + input["s"] + "; "
+    output += "vf=" + input["vf"] + "; "
+    output += "vk=" + input["vk"] + ";"
+    return output
 
 def send_packet(socket, packet_header, packet_payload, verbose):
     # segment packet into 17 bit chunks for a total packet length of 60, icluding 1 enumerator byte
