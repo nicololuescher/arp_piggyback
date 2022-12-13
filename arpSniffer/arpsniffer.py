@@ -8,6 +8,8 @@ import nacl.secret
 import nacl.utils
 import click
 from yaml import safe_dump
+import pydbus
+import arpsniffer_dbus
 
 updated = 0
 peers = dict()
@@ -18,7 +20,13 @@ is_verbose = False
 @click.option(
     "--verbose", is_flag=True, default=False, help="show additional information."
 )
-def main(verbose):
+@click.option(
+    "--insert_into_vula",
+    is_flag=True,
+    default=False,
+    help="Automatically insert into vula.",
+)
+def main(verbose, insert_into_vula):
     global updated, peers, is_verbose
     is_verbose = verbose
     if is_verbose:
@@ -30,10 +38,10 @@ def main(verbose):
     process = Process(target=buffer_timer)
     process.start()
 
-    capture(rawSocket, process)
+    capture(rawSocket, process, insert_into_vula)
 
 
-def capture(raw_socket, process):
+def capture(raw_socket, process, insert_into_vula):
     global peers, updated, is_verbose
     peers = dict()
     peerPositions = dict()
@@ -63,7 +71,10 @@ def capture(raw_socket, process):
             decrypted = decrypt(peers[src_mac], src_mac)
             if decrypted is not None:
                 process.terminate()
-                print(decrypted)
+                if insert_into_vula:
+                    arpsniffer_dbus.pydbusProcessDescriptorString(decrypted)
+                else:
+                    print(decrypted + "\n")
                 break
 
 

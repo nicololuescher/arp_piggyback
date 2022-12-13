@@ -36,7 +36,8 @@ def main(verbose, insert_into_vula):
         src_mac = packet[0][22:28]
         candidate = packet[0][42:]
 
-        if candidate[0] == current_position and candidate[1] == 100:
+        if candidate[0] == current_position and candidate[1] != 0:
+            print("test")
             if verbose:
                 print("Received packet number ", current_position)
             packet_stream += candidate[2:]
