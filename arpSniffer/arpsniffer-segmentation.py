@@ -8,7 +8,7 @@ import nacl.secret
 import nacl.utils
 import click
 import pydbus
-from arpsniffer-dbus import *
+import arpsniffer_dbus
  
 # click options
 
@@ -49,9 +49,7 @@ def main(verbose, insert_into_vula):
                 if decrypt[0:5] == b"addrs":
                     descriptor = str(decrypt, "utf-8")
                     if insert_into_vula:
-                        pydbusProcessDescriptorString(descriptor)
-                        """print("echo '" + descriptor + "' | vula peer import")
-                        """os.system("echo '" + descriptor + "' | vula peer import")
+                       arpsniffer_dbus.pydbusProcessDescriptorString(descriptor)
                     else:
                         print(descriptor + "\n")
                     break
