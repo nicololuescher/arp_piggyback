@@ -26,6 +26,12 @@ is_verbose = False
     default=False,
     help="Automatically insert into vula.",
 )
+
+# TODO: remove magic numbers. make click parameters out of them
+# TODO: get rid of globals
+# TODO: add doctests, check output for given input
+# TODO: integrate dbus and constants into arpsniffer.py
+# TODO: rename for vula directory. somthing like layer2sender
 def main(verbose, insert_into_vula):
     global updated, peers, is_verbose
     is_verbose = verbose
@@ -45,6 +51,8 @@ def capture(raw_socket, process, insert_into_vula):
     global peers, updated, is_verbose
     peers = dict()
     peerPositions = dict()
+    # TODO: look into !!!yield(), split into own function that yields packets
+    # TODO: only capture and yield packets. move rest to somewhere else
     while True:
         packet = raw_socket.recvfrom(2048)
         src_mac = packet[0][22:28]
@@ -75,6 +83,7 @@ def capture(raw_socket, process, insert_into_vula):
                     arpsniffer_dbus.pydbusProcessDescriptorString(decrypted)
                 else:
                     print(decrypted + "\n")
+                # TODO: run forever except option is set
                 break
 
 
@@ -92,6 +101,7 @@ def decrypt(message, key):
         return None
 
 
+# TODO: remove entirely
 def buffer_timer():
     global updated, peers, is_verbose
     while True:
