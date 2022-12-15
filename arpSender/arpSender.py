@@ -10,17 +10,22 @@ import hashlib
 import nacl.secret
 import nacl.utils
 import click
-import arpSender_dbus
+import arpSender_constants
 import json
+import pydbus
 
-# static values
-broadcast_mac = b"\xff\xff\xff\xff\xff\xff"
-ethernet_type = b"\x08\x06"
-hardware_type = b"\x00\x01"
-protocol_type = b"\x08\x00"
-hardware_size = b"\x06"
-protocol_size = b"\x04"
-zero_mac = b"\x00\x00\x00\x00\x00\x00"
+### for vula git repo
+### copy our programs and constants and system.d
+### git change branch to ours
+### git add our files, each to one with gpg signed commit
+### git commit
+### git push to our repo
+### web ui: open pull request on branch
+
+### do what is done in vula verify my-descriptor
+
+# TODO: merge sender and sniffer into one directory
+# TODO: use common constants
 
 # click options
 @click.command()
@@ -35,19 +40,29 @@ zero_mac = b"\x00\x00\x00\x00\x00\x00"
     default=False,
     help="Send reply packets instead of request.",
 )
-def main(interface, descriptor, verbose, is_reply):
+@click.option("--broadcast_mac", default=b"\xff\xff\xff\xff\xff\xff", type=bytes, help="Broadcast mac address")
+@click.option("--ethernet_type", default=b"\x08\x06", type=bytes, help="Ethernet Type")
+@click.option("--hardware_type", default=b"\x00\x01", type=bytes, help="Hardware Type")
+@click.option("--protocol_type", default=b"\x08\x00", type=bytes, help="Protocol Type")
+@click.option("--hardware_size", default=b"\x06", type=bytes, help="Hardware Size")
+@click.option("--protocol_size", default=b"\x04", type=bytes, help="Protocol Size")
+@click.option("--zero_mac", default=b"\x00\x00\x00\x00\x00\x00", type=bytes, help="Empty mac address")
+@click.option("--interval_min", default=0.01, type=float, help="Minimum value of packet delay")
+@click.option("--interval_max", default=0.1, type=float, help="Maximum value of packet delay")
+def main(interface, descriptor, verbose, is_reply, broadcast_mac, ethernet_type, hardware_type, protocol_type, hardware_size, protocol_size, zero_mac, interval_min, interval_max):
     s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW)  # open raw socket
     s.bind((interface, 0))  # bind to interface
 
-    # get dynamic information
+    # get dynamic information TODO: move to click options
     src_mac = get_mac(s, interface)
     ip = get_ip(interface)
     dest_ip = get_arp(verbose)
     op_code = get_op_code(is_reply, verbose)
 
     if descriptor == None:
-        descriptors = json.loads(arpSender_dbus.pydbusGetLatestDescriptor())
-        descriptor = build_vula_descriptor(descriptors.get(socket.inet_ntoa(ip)))
+        # TODO: the same as verify.py line 76 to  80
+        descriptors = json.loads(pydbusGetLatestDescriptor())
+        descriptor = " ".join("%s=%s;" % kv for kv in sorted(descriptors.get(socket.inet_ntoa(ip)).items()))
         if verbose:
             print("Got descriptor", descriptor)
 
@@ -55,31 +70,13 @@ def main(interface, descriptor, verbose, is_reply):
         descriptor, src_mac, verbose
     )  # compress and encrypt message
     packet_header = generate_header(
-        src_mac, op_code, ip, dest_ip
+        src_mac, op_code, ip, dest_ip, broadcast_mac, ethernet_type, hardware_type, protocol_type, hardware_size, protocol_size, zero_mac
     )  # generate packet header
-    send_packet(s, packet_header, message, verbose)  # send arp packet
+    send_packet(s, packet_header, message, verbose, interval_min, interval_max)  # send arp packet
 
-
-def build_vula_descriptor(input):
-    output = ""
-    output += "addrs=" + input["addrs"] + "; "
-    output += "c=" + input["c"] + "; "
-    output += "dt=" + input["dt"] + "; "
-    if input["e"] == "False":        
-        output += "e=0; "
-    else:
-        output += "e=1; "
-    output += "hostname=" + input["hostname"] + "; "
-    output += "pk=" + input["pk"] + "; "
-    output += "port=" + input["port"] + "; "
-    output += "r=" + input["r"] + "; "
-    output += "s=" + input["s"] + "; "
-    output += "vf=" + input["vf"] + "; "
-    output += "vk=" + input["vk"] + ";"
-    return output
-
-def send_packet(socket, packet_header, packet_payload, verbose):
+def send_packet(socket, packet_header, packet_payload, verbose, interval_min, interval_max):
     # segment packet into 17 bit chunks for a total packet length of 60, icluding 1 enumerator byte
+    # TODO: remove enumerator byte
     for i in range(math.ceil(len(packet_payload) / (60 - len(packet_header) - 1))):
         packet = (
             packet_header
@@ -100,7 +97,8 @@ def send_packet(socket, packet_header, packet_payload, verbose):
                 "of",
                 math.ceil(len(packet_payload) / (60 - len(packet_header) - 1)),
             )
-        time.sleep(random.uniform(0.01, 0.1))
+        # TODO: make parameter
+        time.sleep(random.uniform(interval_min, interval_max))
         socket.send(packet)
 
 
@@ -146,24 +144,26 @@ def compress_and_encrypt(msg, encryption_key, verbose=True):
     return box.encrypt(hdc, nonce)  # return encryped text
 
 
-def generate_header(src_mac, op_code, ip, dest_ip):
+# TODO: remove redundant comments. add function comment to explain what it's doing
+def generate_header(src_mac, op_code, ip, dest_ip, broadcast_mac, ethernet_type, hardware_type, protocol_type, hardware_size, protocol_size, zero_mac):
     # build arp packet
-    packet_header = broadcast_mac  # broadcast mac
-    packet_header += src_mac  # source mac
-    packet_header += ethernet_type  # ethernet type
-    packet_header += hardware_type  # hardware type
-    packet_header += protocol_type  # protocol type
-    packet_header += hardware_size  # hardware size
-    packet_header += protocol_size  # protocol size
-    packet_header += op_code  # opcode
-    packet_header += src_mac  # sender mac
-    packet_header += ip  # sender ip
-    packet_header += zero_mac  # destination mac
-    packet_header += dest_ip  # destination ip
+    packet_header = broadcast_mac
+    packet_header += src_mac
+    packet_header += ethernet_type
+    packet_header += hardware_type
+    packet_header += protocol_type
+    packet_header += hardware_size
+    packet_header += protocol_size
+    packet_header += op_code
+    packet_header += src_mac
+    packet_header += ip
+    packet_header += zero_mac
+    packet_header += dest_ip
 
     return packet_header
 
 
+# TODO: new arp entry triggers discovery
 def get_arp(verbose=False):
     with open("/proc/net/arp") as arp_table:  # read arp cache
         reader = list(
@@ -186,6 +186,13 @@ def get_arp(verbose=False):
 
     return dest_ip
 
+def pydbusGetLatestDescriptor():
+    bus = pydbus.SystemBus()
+    _ORGANIZE_DBUS_NAME = arpSender_constants._ORGANIZE_DBUS_NAME
+    _ORGANIZE_DBUS_PATH = arpSender_constants._ORGANIZE_DBUS_PATH
+    organize = bus.get(_ORGANIZE_DBUS_NAME, _ORGANIZE_DBUS_PATH)
+    x = organize.our_latest_descriptors()
+    return x
 
 if __name__ == "__main__":
     main()
