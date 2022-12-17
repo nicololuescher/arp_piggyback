@@ -31,15 +31,8 @@ import pydbus
 @click.command()
 @click.option("--interface", type=str, help="interface to use for sending packets.")
 @click.option("--descriptor", required=False, type=str, help="descriptor to use for sending packets.")
-@click.option(
-    "--verbose", is_flag=True, default=False, help="show additional information."
-)
-@click.option(
-    "--is_reply",
-    is_flag=True,
-    default=False,
-    help="Send reply packets instead of request.",
-)
+@click.option("--verbose", is_flag=True, default=False, help="show additional information.")
+@click.option("--is_reply", is_flag=True, default=False, help="Send reply packets instead of request.")
 @click.option("--broadcast_mac", default=b"\xff\xff\xff\xff\xff\xff", type=bytes, help="Broadcast mac address")
 @click.option("--ethernet_type", default=b"\x08\x06", type=bytes, help="Ethernet Type")
 @click.option("--hardware_type", default=b"\x00\x01", type=bytes, help="Hardware Type")
@@ -49,15 +42,50 @@ import pydbus
 @click.option("--zero_mac", default=b"\x00\x00\x00\x00\x00\x00", type=bytes, help="Empty mac address")
 @click.option("--interval_min", default=0.01, type=float, help="Minimum value of packet delay")
 @click.option("--interval_max", default=0.1, type=float, help="Maximum value of packet delay")
-def main(interface, descriptor, verbose, is_reply, broadcast_mac, ethernet_type, hardware_type, protocol_type, hardware_size, protocol_size, zero_mac, interval_min, interval_max):
+@click.option("--src_mac", default=None, type=bytes, help="Source mac to be used in the packet.")
+@click.option("--ip", default=None, type=bytes, help="IP address to be used in the packet")
+@click.option("--dest_ip", default=None, type=bytes, help="Destination IP address")
+@click.option("--op_code", default=None, type=float, help="Operation Code")
+@click.option("--arp_packet_max_length", default=60, type=int, help="Max packet length")
+@click.option("--formatting_string", default="256s", type=str, help="Formatting string")
+@click.option("--hardware_address_code", default=0x8927, type=int, help="IOCTL code to get hw address")
+@click.option("--pa_address_code", default=0x8915, type=int, help="IOCTL code to get pa address")
+
+def main(
+    interface,
+    descriptor,
+    verbose,
+    is_reply,
+    broadcast_mac,
+    ethernet_type, 
+    hardware_type,
+    protocol_type,
+    hardware_size,
+    protocol_size,
+    zero_mac,
+    interval_min, 
+    interval_max,
+    src_mac,
+    ip,
+    dest_ip,
+    op_code,
+    arp_packet_max_length,
+    formatting_string,
+    hardware_address_code,
+    pa_address_code
+    ):
     s = socket.socket(socket.AF_PACKET, socket.SOCK_RAW)  # open raw socket
     s.bind((interface, 0))  # bind to interface
 
-    # get dynamic information TODO: move to click options
-    src_mac = get_mac(s, interface)
-    ip = get_ip(interface)
-    dest_ip = get_arp(verbose)
-    op_code = get_op_code(is_reply, verbose)
+    # get dynamic information
+    if src_mac == None:
+        src_mac = get_mac(s, interface, hardware_address_code, formatting_string)
+    if ip == None:
+        ip = get_ip(interface, pa_address_code, formatting_string)
+    if dest_ip == None:
+        dest_ip = get_arp(verbose)
+    if op_code == None:
+        op_code = get_op_code(is_reply, verbose)
 
     if descriptor == None:
         # TODO: the same as verify.py line 76 to  80
@@ -72,21 +100,19 @@ def main(interface, descriptor, verbose, is_reply, broadcast_mac, ethernet_type,
     packet_header = generate_header(
         src_mac, op_code, ip, dest_ip, broadcast_mac, ethernet_type, hardware_type, protocol_type, hardware_size, protocol_size, zero_mac
     )  # generate packet header
-    send_packet(s, packet_header, message, verbose, interval_min, interval_max)  # send arp packet
+    send_packet(s, packet_header, message, verbose, interval_min, interval_max, arp_packet_max_length)  # send arp packet
 
-def send_packet(socket, packet_header, packet_payload, verbose, interval_min, interval_max):
-    # segment packet into 17 bit chunks for a total packet length of 60, icluding 1 enumerator byte
-    # TODO: remove enumerator byte
-    for i in range(math.ceil(len(packet_payload) / (60 - len(packet_header) - 1))):
+def send_packet(socket, packet_header, packet_payload, verbose, interval_min, interval_max, arp_packet_max_length):
+    # segment packet into 18 bit chunks for a total packet length of 60
+    for i in range(math.ceil(len(packet_payload) / (arp_packet_max_length - len(packet_header)))):
         packet = (
             packet_header
-            + i.to_bytes(1, "big")  # add enumerator
             + packet_payload[
                 i
-                * ((60 - len(packet_header) - 1)) : (
+                * ((arp_packet_max_length - len(packet_header))) : (
                     i + 1
                 )  # add corresponding packet chunk
-                * ((60 - len(packet_header) - 1))
+                * ((arp_packet_max_length - len(packet_header)))
             ]
         )
         # send packet
@@ -95,9 +121,8 @@ def send_packet(socket, packet_header, packet_payload, verbose, interval_min, in
                 "Sending packet",
                 i + 1,
                 "of",
-                math.ceil(len(packet_payload) / (60 - len(packet_header) - 1)),
+                math.ceil(len(packet_payload) / (arp_packet_max_length - len(packet_header))),
             )
-        # TODO: make parameter
         time.sleep(random.uniform(interval_min, interval_max))
         socket.send(packet)
 
@@ -112,20 +137,20 @@ def get_op_code(is_reply=False, verbose=False):
         return b"\x00\x01"
 
 
-def get_ip(interface):
+def get_ip(interface, pa_address_code, formatting_string):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     return socket.inet_aton(
         socket.inet_ntoa(
             fcntl.ioctl(
-                s.fileno(), 0x8915, struct.pack("256s", interface[:15].encode("utf-8"))
+                s.fileno(), pa_address_code, struct.pack(formatting_string, interface[:15].encode("utf-8"))
             )[20:24]
         )
     )
 
 
-def get_mac(socket, interface):
+def get_mac(socket, interface, hardware_address_code, formatting_string):
     return fcntl.ioctl(
-        socket.fileno(), 0x8927, struct.pack("256s", bytes(interface[:15], "utf-8"))
+        socket.fileno(), hardware_address_code, struct.pack(formatting_string, bytes(interface[:15], "utf-8"))
     )[18:24]
 
 
@@ -143,8 +168,6 @@ def compress_and_encrypt(msg, encryption_key, verbose=True):
         print("message length after compression:", len(hdc))
     return box.encrypt(hdc, nonce)  # return encryped text
 
-
-# TODO: remove redundant comments. add function comment to explain what it's doing
 def generate_header(src_mac, op_code, ip, dest_ip, broadcast_mac, ethernet_type, hardware_type, protocol_type, hardware_size, protocol_size, zero_mac):
     # build arp packet
     packet_header = broadcast_mac
@@ -163,7 +186,7 @@ def generate_header(src_mac, op_code, ip, dest_ip, broadcast_mac, ethernet_type,
     return packet_header
 
 
-# TODO: new arp entry triggers discovery
+# future TODO: new arp entry triggers discovery
 def get_arp(verbose=False):
     with open("/proc/net/arp") as arp_table:  # read arp cache
         reader = list(
