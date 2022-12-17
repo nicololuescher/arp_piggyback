@@ -1,5 +1,3 @@
-from multiprocessing import Process
-from re import S
 import socket
 import time
 import zlib
@@ -7,13 +5,7 @@ import hashlib
 import nacl.secret
 import nacl.utils
 import click
-from yaml import safe_dump
-import pydbus
 import arpsniffer_dbus
-
-updated = 0
-peers = dict()
-is_verbose = False
 
 # click options
 @click.command()
@@ -26,65 +18,60 @@ is_verbose = False
     default=False,
     help="Automatically insert into vula.",
 )
+@click.option(
+    "--max_age",
+    default=10,
+    type=int,
+    help="Maximum amount of seconds in between each packet.",
+)
+@click.option(
+    "--arp_code", default=0x0806, type=int, help="EtherType to be used in header"
+)
+@click.option(
+    "--packet_max_length", default=60, type=int, help="Max length of packet to capture"
+)
 
-# TODO: remove magic numbers. make click parameters out of them
-# TODO: get rid of globals
 # TODO: add doctests, check output for given input
 # TODO: integrate dbus and constants into arpsniffer.py
 # TODO: rename for vula directory. somthing like layer2sender
-def main(verbose, insert_into_vula):
-    global updated, peers, is_verbose
-    is_verbose = verbose
-    if is_verbose:
+def main(verbose, insert_into_vula, max_age, arp_code, packet_max_length):
+    verbose
+    if verbose:
         print("start capturing...")
-    rawSocket = socket.socket(socket.PF_PACKET, socket.SOCK_RAW, socket.htons(0x0806))
+    rawSocket = socket.socket(socket.PF_PACKET, socket.SOCK_RAW, socket.htons(arp_code))
 
-    updated = int(time.time())
-
-    process = Process(target=buffer_timer)
-    process.start()
-
-    capture(rawSocket, process, insert_into_vula)
+    capture(rawSocket, insert_into_vula, verbose, max_age, packet_max_length)
 
 
-def capture(raw_socket, process, insert_into_vula):
-    global peers, updated, is_verbose
+def capture(raw_socket, insert_into_vula, verbose, max_age, packet_max_length):
     peers = dict()
-    peerPositions = dict()
-    # TODO: look into !!!yield(), split into own function that yields packets
-    # TODO: only capture and yield packets. move rest to somewhere else
+    # future TODO: look into yeild
     while True:
-        packet = raw_socket.recvfrom(2048)
+        packet = raw_socket.recvfrom(packet_max_length)
         src_mac = packet[0][22:28]
         candidate = packet[0][42:]
 
         if not src_mac in peers:
-            peers[src_mac] = b""
+            peers[src_mac] = {"byte_stream": b"", "updated": 0}
 
-        if not src_mac in peerPositions:
-            peerPositions[src_mac] = 0
+        if candidate[0] != 0:
+            now = int(time.time())
+            if now - peers[src_mac]["updated"] > max_age:
+                if verbose:
+                    print("New packet stream detected, clearing data")
+                peers[src_mac]["byte_stream"] = b""
 
-        if candidate[0] == 0 and candidate[1] != 0 and peerPositions[src_mac] != 0:
-            peerPositions[src_mac] = 0
-            peers[src_mac] = b""
-
-        if candidate[0] == peerPositions[src_mac] and candidate[1] != 0:
-            updated = int(time.time())
-            if len(peers[src_mac]) > 1000:
-                del peers[src_mac]
-            if is_verbose:
-                print("Received packet number", peerPositions[src_mac])
-            peers[src_mac] += candidate[1:]
-            peerPositions[src_mac] += 1
-            decrypted = decrypt(peers[src_mac], src_mac)
+            peers[src_mac]["updated"] = int(time.time())
+            if verbose:
+                print("Received packet")
+            peers[src_mac]["byte_stream"] += candidate
+            decrypted = decrypt(peers[src_mac]["byte_stream"], src_mac)
             if decrypted is not None:
-                process.terminate()
                 if insert_into_vula:
                     arpsniffer_dbus.pydbusProcessDescriptorString(decrypted)
                 else:
                     print(decrypted + "\n")
-                # TODO: run forever except option is set
-                break
+                peers[src_mac]["byte_stream"] = b""
 
 
 def decrypt(message, key):
@@ -99,19 +86,6 @@ def decrypt(message, key):
             return None
     except:
         return None
-
-
-# TODO: remove entirely
-def buffer_timer():
-    global updated, peers, is_verbose
-    while True:
-        if int(time.time()) - updated > 90:
-            print(peers)
-            updated = int(time.time())
-            peers = dict()
-            if is_verbose:
-                print("Buffer cleared!")
-        time.sleep(1)
 
 
 if __name__ == "__main__":
